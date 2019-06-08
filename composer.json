@@ -1,0 +1,16 @@
+{
+    "name": "nikrolls/silverstripe-s3staticpublisher",
+    "description": "S3 publisher for SilverStripe's Static Publish Queue",
+    "type": "silverstripe-vendormodule",
+    "require": {
+        "silverstripe/staticpublishqueue": "^4.0.0-beta.1",
+        "aws/aws-sdk-php": "^3"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Nik Rolls",
+            "email": "nik@rolls.cc"
+        }
+    ]
+}

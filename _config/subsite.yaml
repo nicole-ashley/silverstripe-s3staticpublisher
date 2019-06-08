@@ -1,0 +1,7 @@
+---
+Only:
+  classexists: 'SilverStripe\Subsites\Model\Subsite'
+---
+SilverStripe\Subsites\Model\Subsite:
+  extensions:
+    - NikRolls\SilverStripe_S3StaticPublisher\SubsiteExtension
