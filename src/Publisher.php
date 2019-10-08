@@ -2,6 +2,7 @@
 
 namespace NikRolls\SilverStripe_S3StaticPublisher;
 
+use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Injector\Injector;
@@ -9,6 +10,8 @@ use SilverStripe\StaticPublishQueue\Publisher\FilesystemPublisher;
 
 class Publisher extends FilesystemPublisher
 {
+    private static $trailing_slashes = false;
+
     protected $fileExtension = 'html';
 
     public function publishURL($url, $forcePublish = false)
@@ -37,15 +40,20 @@ class Publisher extends FilesystemPublisher
         ];
     }
 
-    protected function publishRedirect($response, $url) {
+    protected function publishRedirect($response, $url)
+    {
         $object = ['WebsiteRedirectLocation' => $response->getHeader('Location')];
         if ($response->getHeader('Expires')) {
             $object['Expires'] = $response->getHeader('Expires');
         }
+        if ($this->needsSlashRedirect($url)) {
+            $this->putObject($object, "$url/index.html");
+        }
         return $this->putObject($object, $url);
     }
 
-    protected function publishPage($response, $url) {
+    protected function publishPage($response, $url)
+    {
         $body = $response->getBody();
         $object = [
             'Body' => $body,
@@ -55,10 +63,20 @@ class Publisher extends FilesystemPublisher
         if ($response->getHeader('Expires')) {
             $object['Expires'] = $response->getHeader('Expires');
         }
+        if ($this->needsSlashRedirect($url)) {
+            $response->addHeader('Location', parse_url($url)['path']);
+            $this->publishRedirect($response, "$url/index.html");
+        }
         return $this->putObject($object, $url);
     }
 
-    public function purgeURL($url) {
+    public function purgeURL($url)
+    {
+        try {
+            $this->deleteObject("$url/index.html");
+        } catch (S3Exception $e) {
+            // Gracefully continue
+        }
         return [
             'success' => $this->deleteObject($url),
             'url' => $url,
@@ -66,7 +84,16 @@ class Publisher extends FilesystemPublisher
         ];
     }
 
-    private function putObject($object, $url) {
+    private function needsSlashRedirect($url)
+    {
+        $urlParts = parse_url($url);
+        return !static::config()->get('trailing_slashes') &&
+            !empty($urlParts['path']) &&
+            substr($urlParts['path'], -11) !== '/index.html';
+    }
+
+    private function putObject($object, $url)
+    {
         $configuration = $this->configureObject($object, $url);
         /** @var S3Client $client */
         $client = $configuration['client'];
@@ -74,7 +101,8 @@ class Publisher extends FilesystemPublisher
         return $result->hasKey('VersionId');
     }
 
-    private function deleteObject($url) {
+    private function deleteObject($url)
+    {
         $configuration = $this->configureObject([], $url);
         /** @var S3Client $client */
         $client = $configuration['client'];
@@ -82,21 +110,26 @@ class Publisher extends FilesystemPublisher
         return $result->hasKey('VersionId');
     }
 
-    private function configureObject($object, $url) {
+    private function configureObject($object, $url)
+    {
         $urlParts = parse_url($url);
         $configuration = isset($urlParts['host']) ?
             $this->getConfigurationForDomain($urlParts['host']) :
             $this->getDefaultConfiguration();
         return [
             'client' => $configuration['client'],
-            'object' => array_merge([
-                'Bucket' => $configuration['bucket'],
-                'Key' => $this->generateBucketPath($configuration['prefix'], $urlParts['path']),
-            ], $object)
+            'object' => array_merge(
+                [
+                    'Bucket' => $configuration['bucket'],
+                    'Key' => $this->generateBucketPath($configuration['prefix'], $urlParts['path']),
+                ],
+                $object
+            )
         ];
     }
 
-    private function getConfigurationForDomain($domain) {
+    private function getConfigurationForDomain($domain)
+    {
         if (
             class_exists('\SilverStripe\Subsites\Model\Subsite') &&
             self::config()->get('domain_based_caching')
@@ -107,17 +140,20 @@ class Publisher extends FilesystemPublisher
         }
     }
 
-    private function getConfigurationForSubsite($domain) {
+    private function getConfigurationForSubsite($domain)
+    {
         $subsiteID = \SilverStripe\Subsites\Model\Subsite::getSubsiteIDForDomain($domain);
         $subsite = \SilverStripe\Subsites\Model\Subsite::get()->byID($subsiteID);
         return $this->generateS3ConfigurationForSubsite($subsite);
     }
 
-    private function getDefaultConfiguration() {
+    private function getDefaultConfiguration()
+    {
         return $this->generateDefaultS3Configuration();
     }
 
-    private function generateS3ConfigurationForSubsite($subsite) {
+    private function generateS3ConfigurationForSubsite($subsite)
+    {
         $client = $this->createS3Client(
             $subsite->S3StaticPublisherAccessKeyID,
             $subsite->S3StaticPublisherSecretAccessKey,
@@ -130,10 +166,13 @@ class Publisher extends FilesystemPublisher
         ];
     }
 
-    private function generateDefaultS3Configuration() {
+    private function generateDefaultS3Configuration()
+    {
         $config = self::config();
         $client = $this->createS3Client(
-            $config->get('access_key_id'), $config->get('secret_access_key'), $config->get('region')
+            $config->get('access_key_id'),
+            $config->get('secret_access_key'),
+            $config->get('region')
         );
         return [
             'client' => $client,
@@ -142,19 +181,32 @@ class Publisher extends FilesystemPublisher
         ];
     }
 
-    private function createS3Client($accessKeyId, $secretAccessKey, $region) {
-        return Injector::inst()->create('Aws\S3\S3Client', [
-            'credentials' => Injector::inst()->create('Aws\Credentials\Credentials', $accessKeyId, $secretAccessKey),
-            'region' => $region,
-            'version' => '2006-03-01'
-        ]);
+    private function createS3Client($accessKeyId, $secretAccessKey, $region)
+    {
+        return Injector::inst()->create(
+            'Aws\S3\S3Client',
+            [
+                'credentials' => Injector::inst()->create(
+                    'Aws\Credentials\Credentials',
+                    $accessKeyId,
+                    $secretAccessKey
+                ),
+                'region' => $region,
+                'version' => '2006-03-01'
+            ]
+        );
     }
 
-    private function generateBucketPath($prefix, $path) {
+    private function generateBucketPath($prefix, $path)
+    {
         $pathParts = pathinfo($path);
         $bucketPath = Controller::join_links($prefix, $path);
         if (!isset($pathParts['extension'])) {
-            $bucketPath = Controller::join_links($bucketPath, 'index.html');
+            if (static::config()->get('trailing_slashes')) {
+                $bucketPath = Controller::join_links($bucketPath, 'index.html');
+            } else {
+                $bucketPath = $bucketPath ?: '/index.html';
+            }
         }
         return trim($bucketPath, '/');
     }
