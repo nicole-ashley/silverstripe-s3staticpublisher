@@ -4,8 +4,10 @@ namespace NikRolls\SilverStripe_S3StaticPublisher;
 
 use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
+use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Injector\Injector;
+use SilverStripe\ErrorPage\ErrorPage;
 use SilverStripe\StaticPublishQueue\Publisher\FilesystemPublisher;
 
 class Publisher extends FilesystemPublisher
@@ -25,13 +27,20 @@ class Publisher extends FilesystemPublisher
         $response = $this->generatePageResponse($url);
         $statusCode = $response->getStatusCode();
 
-        if ($statusCode < 300 || $statusCode === 404) {
-            // publish success response
+        if ($statusCode < 300) {
             $success = $this->publishPage($response, $url);
+        } elseif ($statusCode === 404) {
+            $model = SiteTree::get_by_link($url);
+            if ($model && $model instanceof ErrorPage && $model->isPublished()) {
+                $success = $this->publishPage($response, $url);
+            } else {
+                // This job completed as expected, even though we didn't publish it
+                $success = true;
+            }
         } elseif ($statusCode < 400) {
-            // publish redirect response
             $success = $this->publishRedirect($response, $url);
         }
+
         return [
             'published' => $success,
             'success' => $success,
