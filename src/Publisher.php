@@ -93,6 +93,16 @@ class Publisher extends FilesystemPublisher
         ];
     }
 
+    public function getPublishedURLs($dir = null, &$result = [])
+    {
+        // TODO: We need to add some kind of "authority to control an entire bucket" option before implementing
+        // this method, because it's used by StaticCacheFullBuildJob to clean up the filesystem after a full build.
+        // If we don't know for sure that we have authority to control the bucket, we shouldn't allow uncontrolled
+        // files to be deleted.
+        return [];
+    }
+
+
     private function needsSlashRedirect($url)
     {
         $urlParts = parse_url($url);
@@ -122,6 +132,7 @@ class Publisher extends FilesystemPublisher
     private function configureObject($object, $url)
     {
         $urlParts = parse_url($url);
+        $path = isset($urlParts['path']) ? $urlParts['path'] : '';
         $configuration = isset($urlParts['host']) ?
             $this->getConfigurationForDomain($urlParts['host']) :
             $this->getDefaultConfiguration();
@@ -130,7 +141,7 @@ class Publisher extends FilesystemPublisher
             'object' => array_merge(
                 [
                     'Bucket' => $configuration['bucket'],
-                    'Key' => $this->generateBucketPath($configuration['prefix'], $urlParts['path']),
+                    'Key' => $this->generateBucketPath($configuration['prefix'], $path),
                 ],
                 $object
             )
