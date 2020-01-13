@@ -6,6 +6,7 @@ use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
+use SilverStripe\Core\Environment;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\ErrorPage\ErrorPage;
 use SilverStripe\StaticPublishQueue\Publisher\FilesystemPublisher;
@@ -152,7 +153,7 @@ class Publisher extends FilesystemPublisher
     {
         if (
             class_exists('\SilverStripe\Subsites\Model\Subsite') &&
-            self::config()->get('domain_based_caching')
+            static::config()->get('domain_based_caching')
         ) {
             return $this->getConfigurationForSubsite($domain);
         } else {
@@ -172,23 +173,23 @@ class Publisher extends FilesystemPublisher
         return $this->generateDefaultS3Configuration();
     }
 
-    private function generateS3ConfigurationForSubsite($subsite)
+    private function generateS3ConfigurationForSubsite(\SilverStripe\Subsites\Model\Subsite $subsite)
     {
         $client = $this->createS3Client(
-            $subsite->S3StaticPublisherAccessKeyID,
-            $subsite->S3StaticPublisherSecretAccessKey,
-            $subsite->S3StaticPublisherRegion
-        );
+            $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherAccessKeyID),
+            $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherSecretAccessKey),
+            $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherRegion),
+            );
         return [
             'client' => $client,
-            'bucket' => $subsite->S3StaticPublisherBucketName,
-            'prefix' => $subsite->S3StaticPublisherPathPrefix
+            'bucket' => $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherBucketName),
+            'prefix' => $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherPathPrefix),
         ];
     }
 
     private function generateDefaultS3Configuration()
     {
-        $config = self::config();
+        $config = static::config();
         $client = $this->createS3Client(
             $config->get('access_key_id'),
             $config->get('secret_access_key'),
@@ -199,6 +200,15 @@ class Publisher extends FilesystemPublisher
             'bucket' => $config->get('bucket'),
             'prefix' => $config->get('prefix')
         ];
+    }
+
+    private function getBacktickValueFromEnvironment($value)
+    {
+        if (is_string($value) && preg_match('"^`(.*)`$"', trim($value), $matches)) {
+            $value = Environment::getEnv($matches[1]);
+        }
+
+        return $value;
     }
 
     private function createS3Client($accessKeyId, $secretAccessKey, $region)
