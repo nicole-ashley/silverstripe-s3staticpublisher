@@ -24,6 +24,10 @@ class Publisher extends FilesystemPublisher
             return;
         }
 
+        if (strpos($url, '?')) {
+            $url = substr($url, 0, strpos($url, '?'));
+        }
+
         $success = false;
         $response = $this->generatePageResponse($url);
         $statusCode = $response->getStatusCode();
@@ -179,7 +183,7 @@ class Publisher extends FilesystemPublisher
             $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherAccessKeyID),
             $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherSecretAccessKey),
             $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherRegion),
-            );
+        );
         return [
             'client' => $client,
             'bucket' => $this->getBacktickValueFromEnvironment($subsite->S3StaticPublisherBucketName),
