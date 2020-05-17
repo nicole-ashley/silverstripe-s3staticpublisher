@@ -137,7 +137,7 @@ class Publisher extends FilesystemPublisher
     private function configureObject($object, $url)
     {
         $urlParts = parse_url($url);
-        $path = isset($urlParts['path']) ? $urlParts['path'] : '';
+        $path = isset($urlParts['path']) ? trim($urlParts['path'], '/') : '';
         $configuration = isset($urlParts['host']) ?
             $this->getConfigurationForDomain($urlParts['host']) :
             $this->getDefaultConfiguration();
