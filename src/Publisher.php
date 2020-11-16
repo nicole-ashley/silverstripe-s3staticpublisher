@@ -20,7 +20,7 @@ class Publisher extends FilesystemPublisher
     public function publishURL($url, $forcePublish = false)
     {
         if (!$url) {
-            user_error("Bad url:" . var_export($url, true), E_USER_WARNING);
+            user_error('Bad url:' . var_export($url, true), E_USER_WARNING);
             return;
         }
 
@@ -86,8 +86,17 @@ class Publisher extends FilesystemPublisher
 
     public function purgeURL($url)
     {
+        if (!$url) {
+            user_error('Bad url:' . var_export($url, true), E_USER_WARNING);
+            return;
+        }
+
+        if (strpos($url, '?')) {
+            $url = substr($url, 0, strpos($url, '?'));
+        }
+
         try {
-            $this->deleteObject("$url/index.html");
+            $this->deleteObject(Controller::join_links($url, 'index.html'));
         } catch (S3Exception $e) {
             // Gracefully continue
         }
@@ -235,12 +244,11 @@ class Publisher extends FilesystemPublisher
     {
         $pathParts = pathinfo($path);
         $bucketPath = Controller::join_links($prefix, $path);
-        if (!isset($pathParts['extension'])) {
-            if (static::config()->get('trailing_slashes')) {
-                $bucketPath = Controller::join_links($bucketPath, 'index.html');
-            } else {
-                $bucketPath = $bucketPath ?: '/index.html';
-            }
+        if (
+            !isset($pathParts['extension']) &&
+            (static::config()->get('trailing_slashes') || !trim($path, '/'))
+        ) {
+            $bucketPath = Controller::join_links($bucketPath, 'index.html');
         }
         return trim($bucketPath, '/');
     }
